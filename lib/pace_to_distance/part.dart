@@ -6,8 +6,7 @@ class Part {
 
   double getDistance() {
     final paceSeconds = pace.inSeconds;
-    if (paceSeconds == 0) return 0;
-    final dist = timespan.inSeconds / paceSeconds;
-    return double.parse(dist.toStringAsFixed(2));
+    if (paceSeconds == 0) return 0.0;
+    return timespan.inSeconds / paceSeconds;
   }
 }

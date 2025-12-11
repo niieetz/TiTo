@@ -17,23 +17,49 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Part> parts = [];
 
   Duration parseDuration(String input) {
-    final parts = input.split(":");
+    final s = input.trim();
+    if (s.isEmpty) return Duration.zero;
+
+    final parts = s
+        .split(":")
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+
+    // mm
     if (parts.length == 1) {
       final minutes = int.tryParse(parts[0]) ?? 0;
       return Duration(minutes: minutes);
-    } else if (parts.length == 2) {
+    }
+
+    // mm:ss
+    if (parts.length == 2) {
       final minutes = int.tryParse(parts[0]) ?? 0;
       final seconds = int.tryParse(parts[1]) ?? 0;
       return Duration(minutes: minutes, seconds: seconds);
     }
-    return Duration.zero;
+
+    // hh:mm:ss (or more segments) - combine leading segments as hours
+    final seconds = int.tryParse(parts.last) ?? 0;
+    final minutes = int.tryParse(parts[parts.length - 2]) ?? 0;
+    final hoursPart = parts.sublist(0, parts.length - 2).join(":");
+    final hours = int.tryParse(hoursPart) ?? 0;
+    return Duration(hours: hours, minutes: minutes, seconds: seconds);
   }
 
-  Future<Part?> showPartDialog(BuildContext context) {
+  String formatDouble(double value) {
+    // Format with up to 2 decimal places, trimming trailing zeros.
+    var s = value.toStringAsFixed(2);
+    // Remove trailing zeros in the fractional part, then remove trailing dot if any.
+    s = s.replaceFirst(RegExp(r"\.?0+$"), "");
+    return s;
+  }
+
+  Future<Part?> showPartDialog(BuildContext context) async {
     final paceController = TextEditingController();
     final timespanController = TextEditingController();
 
-    return showDialog<Part>(
+    final result = await showDialog<Part>(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -75,6 +101,12 @@ class _MyHomePageState extends State<MyHomePage> {
         );
       },
     );
+
+    // Dispose controllers after the dialog is closed to avoid leaks
+    paceController.dispose();
+    timespanController.dispose();
+
+    return result;
   }
 
   String durationToString(Duration duration) {
@@ -111,7 +143,7 @@ class _MyHomePageState extends State<MyHomePage> {
           Row(
             children: [
               const Spacer(),
-              Text('Total distance: ${_distance.toStringAsFixed(2)} km'),
+              Text('Total distance: ${formatDouble(_distance)} km'),
               const Spacer(),
             ],
           ),
@@ -127,7 +159,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           "Pace: ${durationToString(part.pace)}, Duration: ${durationToString(part.timespan)}",
                         ),
                         subtitle: Text(
-                          "Distance: ${part.getDistance().toStringAsFixed(2)} km",
+                          "Distance: ${formatDouble(part.getDistance())} km",
                         ),
                       );
                     },
@@ -145,27 +177,16 @@ class _MyHomePageState extends State<MyHomePage> {
                 setState(() {
                   parts.add(newPart);
 
-                  // recalc totals
-                  _distance = parts.fold(
-                    0.0,
-                    (sum, p) => sum + p.getDistance(),
-                  );
-                  _duration = Duration(
-                    seconds: parts.fold(
-                      0,
-                      (sum, p) => sum + p.timespan.inSeconds,
-                    ),
-                  );
+                  // Recalculate totals in a single pass to avoid multiple folds
+                  int totalSeconds = 0;
+                  double totalDistance = 0.0;
+                  for (final p in parts) {
+                    totalSeconds += p.timespan.inSeconds;
+                    totalDistance += p.getDistance();
+                  }
 
-                  final totalSeconds = parts.fold<int>(
-                    0,
-                    (sum, p) => sum + p.timespan.inSeconds,
-                  );
-                  final totalDistance = parts.fold<double>(
-                    0,
-                    (sum, p) => sum + p.getDistance(),
-                  );
-
+                  _distance = totalDistance;
+                  _duration = Duration(seconds: totalSeconds);
                   _pace = totalDistance > 0
                       ? Duration(
                           seconds: (totalSeconds / totalDistance).round(),
